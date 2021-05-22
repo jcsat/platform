@@ -1,19 +1,38 @@
-  
-FROM php:7.4-fpm-alpine
+  FROM php:7.4-fpm
 
-RUN apk add --no-cache nginx wget
+# Arguments defined in docker-compose.yml
+ARG user
+ARG uid
 
-RUN mkdir -p /run/nginx
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    git \
+    curl \
+    libpng-dev \
+    libonig-dev \
+    libxml2-dev \
+    zip \
+    unzip
 
-COPY docker/nginx.conf /etc/nginx/nginx.conf
+# Clear cache
+RUN apt-get clean && rm -rf /var/lib/apt/lists/*
 
-RUN mkdir -p /app
-COPY . /app
+# Install PHP extensions
+RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd
 
-RUN sh -c "wget http://getcomposer.org/composer.phar && chmod a+x composer.phar && mv composer.phar /usr/local/bin/composer"
-RUN cd /app && \
-    /usr/local/bin/composer install --no-dev
+# Get latest Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-RUN chown -R www-data: /app
+# Create system user to run Composer and Artisan Commands
+RUN useradd -G www-data,root -u $uid -d /home/$user $user
+RUN mkdir -p /home/$user/.composer && \
+    chown -R $user:$user /home/$user
 
-CMD sh /app/docker/startup.sh
+# Install NPM for Livewire
+RUN curl -sL https://deb.nodesource.com/setup_14.x | bash - && \
+    apt-get install -yq nodejs build-essential
+
+# Set working directory
+WORKDIR /var/www
+
+USER $user
